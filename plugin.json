@@ -20,6 +20,15 @@
     "settings_schema": {
         "header": "",
         "footer": "",
-        "settings": []
+        "settings": [
+            {
+                "key": "PrometheusURL",
+                "display_name": "Prometheus URL",
+                "type": "text",
+                "help_text": "",
+                "placeholder": "",
+                "default": "http://localhost:9090"
+            }
+        ]
     }
 }

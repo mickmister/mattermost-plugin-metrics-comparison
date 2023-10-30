@@ -10,9 +10,11 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
+	"github.com/mattermost/mattermost/server/public/pluginapi"
 	"github.com/pkg/errors"
 
-	cli "github.com/mattermost/mattermost-perf-stats-cli/app"
+	"github.com/mattermost/mattermost-plugin-metrics-comparison/server/app"
+	"github.com/mattermost/mattermost-plugin-metrics-comparison/server/prometheus"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -25,6 +27,10 @@ type Plugin struct {
 	// configuration is the active plugin configuration. Consult getConfiguration and
 	// setConfiguration for usage.
 	configuration *configuration
+
+	prometheusClient prometheus.PrometheusClient
+
+	pluginapi *pluginapi.Client
 }
 
 const trigger = "performance-report"
@@ -47,66 +53,60 @@ func (p *Plugin) OnActivate() error {
 		return err
 	}
 
+	conf := p.getConfiguration()
+	if conf.PrometheusURL == "" {
+		return errors.New("please provide a config value for PrometheusURL")
+	}
+
+	p.pluginapi = pluginapi.NewClient(p.API, p.Driver)
+	p.prometheusClient = prometheus.New(conf.PrometheusURL, p.pluginapi.Log)
+
 	return nil
 }
-
-const defaultQuery = "sum(increase(mattermost_db_store_time_sum[{{.Length}}]) and increase(mattermost_db_store_time_count[{{.Offset}}]) > 0) by (method)"
-const defaultFirst = "3d"
-const defaultSecond = "5d"
-const defaultLength = "1d"
-const defaultScaleBy = "post"
-const defaultSort = "total-time"
-const defaultLimit = 20
 
 const fname1 = "_debug/grafana_sept3-9.json"
 const fname2 = "_debug/grafana_sept10-16.json"
 
-type runCommandFlags struct {
-	query   string
-	first   string
-	second  string
-	length  string
-	Sort    string
-	scaleBy string
-	limit   int
-}
-
 func getRunCommand() *model.AutocompleteData {
 	var runCommand = model.NewAutocompleteData("run", "", "")
 
-	runCommand.AddNamedTextArgument("query", "", "", defaultQuery, false)
-	runCommand.AddNamedTextArgument("first", "", "", defaultFirst, false)
-	runCommand.AddNamedTextArgument("second", "", "", defaultSecond, false)
-	runCommand.AddNamedTextArgument("length", "", "", defaultLength, false)
-	runCommand.AddNamedTextArgument("scaleBy", "", "", defaultScaleBy, false)
-	runCommand.AddNamedTextArgument("sort", "", "", defaultSort, false)
-	runCommand.AddNamedTextArgument("limit", "", "", fmt.Sprintf("%d", defaultLimit), false)
+	defaults := app.GetDefaultReportFlags()
+	runCommand.AddNamedTextArgument("query", "", "", defaults.Query, false)
+	runCommand.AddNamedTextArgument("first", "", "", defaults.First, false)
+	runCommand.AddNamedTextArgument("second", "", "", defaults.Second, false)
+	runCommand.AddNamedTextArgument("length", "", "", defaults.Length, false)
+	runCommand.AddNamedTextArgument("scaleBy", "", "", defaults.ScaleBy, false)
+	runCommand.AddNamedTextArgument("sort", "", "", defaults.Sort, false)
+	runCommand.AddNamedTextArgument("limit", "", "", fmt.Sprintf("%d", defaults.Limit), false)
 
 	return runCommand
 }
 
-func parseRunCommandFlags(args []string) (*runCommandFlags, error) {
+func parseRunCommandFlags(args []string) (app.RunReportFlags, error) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 
-	query := fs.String("query", defaultQuery, "")
-	first := fs.String("first", defaultFirst, "")
-	second := fs.String("second", defaultSecond, "")
-	length := fs.String("length", defaultLength, "")
-	scaleBy := fs.String("scaleBy", defaultScaleBy, "")
-	limit := fs.Int("limit", defaultLimit, "")
+	defaults := app.GetDefaultReportFlags()
+	query := fs.String("query", defaults.Query, "")
+	first := fs.String("first", defaults.First, "")
+	second := fs.String("second", defaults.Second, "")
+	length := fs.String("length", defaults.Length, "")
+	scaleBy := fs.String("scaleBy", defaults.ScaleBy, "")
+	sort := fs.String("sort", defaults.Sort, "")
+	limit := fs.Int("limit", defaults.Limit, "")
 
 	err := fs.Parse(args)
 	if err != nil {
-		return nil, err
+		return defaults, err
 	}
 
-	return &runCommandFlags{
-		query:   *query,
-		first:   *first,
-		second:  *second,
-		length:  *length,
-		scaleBy: *scaleBy,
-		limit:   *limit,
+	return app.RunReportFlags{
+		Query:   *query,
+		First:   *first,
+		Second:  *second,
+		Length:  *length,
+		ScaleBy: *scaleBy,
+		Sort:    *sort,
+		Limit:   *limit,
 	}, nil
 }
 
@@ -129,9 +129,6 @@ func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*mo
 	}
 
 	commandFlags := parts[2:]
-	if len(commandFlags) < 1 {
-		return &model.CommandResponse{Text: "No flags received." + getHelpText()}, nil
-	}
 
 	flagValues, err := parseRunCommandFlags(commandFlags)
 	if err != nil {
@@ -146,8 +143,27 @@ func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*mo
 	return &model.CommandResponse{Text: resText}, nil
 }
 
-func (p *Plugin) executeRunCommand(flagValues *runCommandFlags) (string, error) {
-	a := cli.New("")
+func (p *Plugin) executeRunCommand(flagValues app.RunReportFlags) (string, error) {
+	a := app.New(p.prometheusClient)
+
+	data1, err := a.GetDBMetrics(flagValues.First, flagValues.Length)
+	if err != nil {
+		err = errors.Wrap(err, "error getting API metrics")
+		return err.Error(), err
+	}
+
+	data2, err := a.GetDBMetrics(flagValues.Second, flagValues.Length)
+	if err != nil {
+		err = errors.Wrap(err, "error running report")
+		return err.Error(), err
+	}
+
+	report := app.ComputeReport(data1, data2, flagValues)
+	return report.AsMarkdown(), nil
+}
+
+func (p *Plugin) executeRunCommandWithMockData(flagValues app.RunReportFlags) (string, error) {
+	a := app.New(p.prometheusClient)
 
 	bundlePath, err := p.API.GetBundlePath()
 	if err != nil {
@@ -157,7 +173,7 @@ func (p *Plugin) executeRunCommand(flagValues *runCommandFlags) (string, error) 
 
 	fname := path.Join(bundlePath, "assets", fname1)
 
-	data1, err := a.RunQueryWithMockData(flagValues.query, flagValues.first, flagValues.second, flagValues.length, flagValues.scaleBy, fname)
+	data1, err := a.RunQueryWithMockData(flagValues.Query, flagValues.First, flagValues.Second, flagValues.Length, flagValues.ScaleBy, fname)
 	if err != nil {
 		err = errors.Wrap(err, "error running report")
 		return err.Error(), err
@@ -165,32 +181,14 @@ func (p *Plugin) executeRunCommand(flagValues *runCommandFlags) (string, error) 
 
 	fname = path.Join(bundlePath, "assets", fname2)
 
-	// is this supposed to compute one time frame, or both?
-	data2, err := a.RunQueryWithMockData(flagValues.query, flagValues.first, flagValues.second, flagValues.length, flagValues.scaleBy, fname)
+	data2, err := a.RunQueryWithMockData(flagValues.Query, flagValues.First, flagValues.Second, flagValues.Length, flagValues.ScaleBy, fname)
 	if err != nil {
 		err = errors.Wrap(err, "error running report")
 		return err.Error(), err
 	}
 
-	biggestIncreases, biggestDecreases := cli.ComputeReport(data1, data2, "total-time", flagValues.limit)
-
-	resText := "## Biggest Increases\n\n"
-	resText += generateMarkdownTable(biggestIncreases)
-
-	resText += "\n\n## Biggest Decreases\n\n"
-	resText += generateMarkdownTable(biggestDecreases)
-
-	return resText, nil
-}
-
-func generateMarkdownTable(entries []*cli.DBEntry) string {
-	resText := "| Method | Total Time | Count | Average |\n"
-	resText += "| -------- | -------- | -------- | -------- |\n"
-	for _, v := range entries {
-		resText += fmt.Sprintf("|%s | %v | %v | %v |\n", v.Method, v.TotalTime, v.Count, v.Average)
-	}
-
-	return resText
+	report := app.ComputeReport(data1, data2, flagValues)
+	return report.AsMarkdown(), nil
 }
 
 func getHelpText() string {
