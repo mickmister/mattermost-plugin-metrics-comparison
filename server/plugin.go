@@ -70,12 +70,30 @@ func getRunCommand() *model.AutocompleteData {
 	var runCommand = model.NewAutocompleteData("run", "", "")
 
 	defaults := app.GetDefaultReportFlags()
+	runCommand.AddNamedStaticListArgument("report", "", false, []model.AutocompleteListItem{
+		{
+			Item: string(app.ReportTypeAPIHandlerComparison),
+		},
+		{
+			Item: string(app.ReportTypeAPIHandlerComparison),
+		},
+	})
 	runCommand.AddNamedTextArgument("query", "", "", defaults.Query, false)
 	runCommand.AddNamedTextArgument("first", "", "", defaults.First, false)
 	runCommand.AddNamedTextArgument("second", "", "", defaults.Second, false)
 	runCommand.AddNamedTextArgument("length", "", "", defaults.Length, false)
 	runCommand.AddNamedTextArgument("scaleBy", "", "", defaults.ScaleBy, false)
-	runCommand.AddNamedTextArgument("sort", "", "", defaults.Sort, false)
+	runCommand.AddNamedStaticListArgument("sort", "", false, []model.AutocompleteListItem{
+		{
+			Item: string(app.SortCategoryTotalTime),
+		},
+		{
+			Item: string(app.SortCategoryCount),
+		},
+		{
+			Item: string(app.SortCategoryAverageTime),
+		},
+	})
 	runCommand.AddNamedTextArgument("limit", "", "", fmt.Sprintf("%d", defaults.Limit), false)
 	runCommand.AddNamedTextArgument("public", "", "", "false", false)
 
@@ -92,7 +110,7 @@ func parseRunCommandFlags(args []string) (app.RunReportFlags, bool, error) {
 	second := fs.String("second", defaults.Second, "")
 	length := fs.String("length", defaults.Length, "")
 	scaleBy := fs.String("scaleBy", defaults.ScaleBy, "")
-	sort := fs.String("sort", defaults.Sort, "")
+	sort := fs.String("sort", string(defaults.Sort), "")
 	limit := fs.Int("limit", defaults.Limit, "")
 	public := fs.String("public", "false", "")
 
@@ -110,7 +128,7 @@ func parseRunCommandFlags(args []string) (app.RunReportFlags, bool, error) {
 		Second:     *second,
 		Length:     *length,
 		ScaleBy:    *scaleBy,
-		Sort:       *sort,
+		Sort:       app.SortCategory(*sort),
 		Limit:      *limit,
 	}, isPublicPost, nil
 }

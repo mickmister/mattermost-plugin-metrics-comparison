@@ -9,13 +9,21 @@ const (
 	ReportTypeDBStoreMethodSnapshot   ReportType = "db-snapshot"
 )
 
+type SortCategory string
+
+const (
+	SortCategoryTotalTime   SortCategory = "total-time"
+	SortCategoryCount       SortCategory = "count"
+	SortCategoryAverageTime SortCategory = "average-time"
+)
+
 type RunReportFlags struct {
 	Query      string
 	ReportType ReportType
 	First      string
 	Second     string
 	Length     string
-	Sort       string
+	Sort       SortCategory
 	ScaleBy    string
 	Limit      int
 }
@@ -26,7 +34,7 @@ const defaultFirst = "1m"
 const defaultSecond = "1d"
 const defaultLength = "1d"
 const defaultScaleBy = "post"
-const defaultSort = "total-time"
+const defaultSort = SortCategoryTotalTime
 const defaultLimit = 20
 
 func GetDefaultReportFlags() RunReportFlags {
