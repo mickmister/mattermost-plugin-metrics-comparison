@@ -22,15 +22,15 @@ type Response struct {
 	}
 }
 
-type PrometheusClient interface {
+type Client interface {
 	Query(query string) (*Response, error)
 }
 
 type ReportQueryClient struct {
-	client PrometheusClient
+	client Client
 }
 
-func NewReportClient(client PrometheusClient) *ReportQueryClient {
+func NewReportClient(client Client) *ReportQueryClient {
 	return &ReportQueryClient{
 		client,
 	}
@@ -40,7 +40,7 @@ type prometheusClient struct {
 	endpoint string
 }
 
-func NewPrometheusClient(endpoint string) PrometheusClient {
+func NewPrometheusClient(endpoint string) Client {
 	return &prometheusClient{
 		endpoint,
 	}

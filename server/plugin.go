@@ -65,9 +65,6 @@ func (p *Plugin) OnActivate() error {
 	return nil
 }
 
-const fname1 = "_debug/grafana_sept3-9.json"
-const fname2 = "_debug/grafana_sept10-16.json"
-
 func getRunCommand() *model.AutocompleteData {
 	var runCommand = model.NewAutocompleteData("run", "", "")
 
@@ -176,13 +173,16 @@ func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*mo
 	return p.ephemeralResponse(resText), nil
 }
 
-func (p *Plugin) publicResponse(channelId, userId, text string) *model.CommandResponse {
+func (p *Plugin) publicResponse(channelID, userID, text string) *model.CommandResponse {
 	post := &model.Post{
-		ChannelId: channelId,
-		UserId:    userId,
+		ChannelId: channelID,
+		UserId:    userID,
 		Message:   text,
 	}
-	p.pluginapi.Post.CreatePost(post)
+	err := p.pluginapi.Post.CreatePost(post)
+	if err != nil {
+		p.pluginapi.Log.Error("failed to create post for report", "err", err.Error())
+	}
 	return &model.CommandResponse{}
 }
 

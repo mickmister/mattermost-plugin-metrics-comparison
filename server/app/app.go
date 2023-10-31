@@ -5,7 +5,6 @@ import (
 	"math"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/mattermost/mattermost-plugin-metrics-comparison/server/prometheus"
 	"github.com/pkg/errors"
@@ -73,9 +72,9 @@ func (a *App) GetDBMetrics(offset, length string) (map[string]*DBEntry, error) {
 		return nil, err
 	}
 	for _, r := range totalTimeMetrics.Data.Result {
-		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
+		calls, err2 := strconv.ParseFloat(r.Value[1].(string), 64)
+		if err2 != nil {
+			return nil, err2
 		}
 		data[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
 	}
@@ -87,9 +86,9 @@ func (a *App) GetDBMetrics(offset, length string) (map[string]*DBEntry, error) {
 	}
 	for _, r := range callsMetrics.Data.Result {
 		entry := data[r.Metric["method"]]
-		count, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
+		count, err2 := strconv.ParseFloat(r.Value[1].(string), 64)
+		if err2 != nil {
+			return nil, err2
 		}
 		entry.Count = count
 	}
@@ -100,9 +99,9 @@ func (a *App) GetDBMetrics(offset, length string) (map[string]*DBEntry, error) {
 	}
 	for _, r := range averageMetrics.Data.Result {
 		entry := data[r.Metric["method"]]
-		average, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
+		average, err2 := strconv.ParseFloat(r.Value[1].(string), 64)
+		if err2 != nil {
+			return nil, err2
 		}
 		if average == 0 {
 			fmt.Println("zero")
@@ -120,9 +119,9 @@ func (a *App) GetAPIMetrics(offset, length string) (map[string]*APIEntry, error)
 		return nil, err
 	}
 	for _, r := range totalTimeMetrics.Data.Result {
-		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
+		calls, err2 := strconv.ParseFloat(r.Value[1].(string), 64)
+		if err2 != nil {
+			return nil, err2
 		}
 		data[r.Metric["handler"]] = &APIEntry{TotalTime: calls, Handler: r.Metric["handler"]}
 	}
@@ -134,9 +133,9 @@ func (a *App) GetAPIMetrics(offset, length string) (map[string]*APIEntry, error)
 	}
 	for _, r := range callsMetrics.Data.Result {
 		entry := data[r.Metric["handler"]]
-		count, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
+		count, err2 := strconv.ParseFloat(r.Value[1].(string), 64)
+		if err2 != nil {
+			return nil, err2
 		}
 		entry.Count = count
 	}
@@ -147,88 +146,13 @@ func (a *App) GetAPIMetrics(offset, length string) (map[string]*APIEntry, error)
 	}
 	for _, r := range averageMetrics.Data.Result {
 		entry := data[r.Metric["handler"]]
-		average, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
+		average, err2 := strconv.ParseFloat(r.Value[1].(string), 64)
+		if err2 != nil {
+			return nil, err2
 		}
 		entry.Average = average
 	}
 	return data, nil
-}
-
-// sum(increase(mattermost_api_time_sum[%s]) and increase(mattermost_api_time_count[%s]) > 0) by (handler)
-
-// func (a *App) RunQuery(query, firstOffset, secondOffset, length string, scaleBy string) (map[string]*DBEntry, error) {
-// 	firstResultsMap := map[string]*DBEntry{}
-// 	secondResultsMap := map[string]*DBEntry{}
-
-// 	// firstQuery := replacePlaceholders(query, firstOffset, length)
-// 	secondQuery := replacePlaceholders(query, secondOffset, length)
-
-// 	timeRange := length
-// 	queryResult, err := a.reportQueryClient.Query(fmt.Sprintf("sum(increase(mattermost_db_store_time_count[%s]) > 0) by (method)", timeRange))
-// 	//
-// 	// fmt.Println(firstQuery)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// fmt.Printf("%+v\n", queryResult.Data.Result)
-
-// 	for _, r := range queryResult.Data.Result {
-// 		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		firstResultsMap[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
-// 	}
-
-// 	queryResult, err = a.reportQueryClient.Query(secondQuery)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	for _, r := range queryResult.Data.Result {
-// 		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		secondResultsMap[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
-// 	}
-
-// 	finalResult := map[string]*DBEntry{}
-// 	for handlerName, v1 := range firstResultsMap {
-// 		v2 := secondResultsMap[handlerName]
-// 		if v2 == nil {
-// 			continue
-// 		}
-
-// 		if v1.TotalTime == 0 || v2.TotalTime == 0 {
-// 			finalResult[handlerName] = &DBEntry{
-// 				Method:    handlerName,
-// 				TotalTime: 0,
-// 			}
-// 			continue
-// 		}
-
-// 		diff := v1.TotalTime - v2.TotalTime
-// 		// percentDiff := diff
-// 		percentDiff := (diff / v2.TotalTime) * 100
-
-// 		finalResult[handlerName] = &DBEntry{
-// 			Method:    handlerName,
-// 			TotalTime: percentDiff,
-// 		}
-// 	}
-
-// 	return finalResult, nil
-// }
-
-func replacePlaceholders(query, offset, length string) string {
-	// Replace placeholders in the query with actual values.
-	query = strings.Replace(query, "{{.Length}}", length, -1)
-	query = strings.Replace(query, "{{.Offset}}", offset, -1)
-	return query
 }
 
 func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, error) {
@@ -263,21 +187,18 @@ func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, er
 		}
 	}
 
-	if sortBy == "" {
-		sortBy = SortCategoryTotalTime
-	}
-
 	biggestIncreases := make([]*FullDBEntry, 0, len(data))
 	for _, d := range data {
 		biggestIncreases = append(biggestIncreases, d)
 	}
 
 	sort.Slice(biggestIncreases, func(i, j int) bool {
-		if sortBy == SortCategoryTotalTime {
+		switch sortBy {
+		case SortCategoryTotalTime:
 			return biggestIncreases[i].TotalTimeDifferencePercent > biggestIncreases[j].TotalTimeDifferencePercent
-		} else if sortBy == SortCategoryAverageTime {
+		case SortCategoryAverageTime:
 			return biggestIncreases[i].AverageDifferencePercent > biggestIncreases[j].AverageDifferencePercent
-		} else if sortBy == SortCategoryCount {
+		case SortCategoryCount:
 			return biggestIncreases[i].CountDifferencePercent > biggestIncreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
@@ -289,11 +210,12 @@ func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, er
 	}
 
 	sort.Slice(biggestDecreases, func(i, j int) bool {
-		if sortBy == SortCategoryTotalTime {
+		switch sortBy {
+		case SortCategoryTotalTime:
 			return biggestDecreases[i].TotalTimeDifferencePercent < biggestDecreases[j].TotalTimeDifferencePercent
-		} else if sortBy == SortCategoryAverageTime {
+		case SortCategoryAverageTime:
 			return biggestDecreases[i].AverageDifferencePercent < biggestDecreases[j].AverageDifferencePercent
-		} else if sortBy == SortCategoryCount {
+		case SortCategoryCount:
 			return biggestDecreases[i].CountDifferencePercent < biggestDecreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
@@ -322,7 +244,7 @@ func (a *App) RunAPIComparisonReport(runFlags RunReportFlags) (*APIHandlerReport
 	}
 
 	data := map[string]*FullAPIEntry{}
-	criteria := runFlags.Sort
+	sortBy := runFlags.Sort
 	limit := runFlags.Limit
 
 	for method, value1 := range data1 {
@@ -342,21 +264,18 @@ func (a *App) RunAPIComparisonReport(runFlags RunReportFlags) (*APIHandlerReport
 		}
 	}
 
-	if criteria == "" {
-		criteria = SortCategoryTotalTime
-	}
-
 	biggestIncreases := make([]*FullAPIEntry, 0, len(data))
 	for _, d := range data {
 		biggestIncreases = append(biggestIncreases, d)
 	}
 
 	sort.Slice(biggestIncreases, func(i, j int) bool {
-		if criteria == SortCategoryTotalTime {
+		switch sortBy {
+		case SortCategoryTotalTime:
 			return biggestIncreases[i].TotalTimeDifferencePercent > biggestIncreases[j].TotalTimeDifferencePercent
-		} else if criteria == SortCategoryAverageTime {
+		case SortCategoryAverageTime:
 			return biggestIncreases[i].AverageDifferencePercent > biggestIncreases[j].AverageDifferencePercent
-		} else if criteria == SortCategoryCount {
+		case SortCategoryCount:
 			return biggestIncreases[i].CountDifferencePercent > biggestIncreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
@@ -368,11 +287,12 @@ func (a *App) RunAPIComparisonReport(runFlags RunReportFlags) (*APIHandlerReport
 	}
 
 	sort.Slice(biggestDecreases, func(i, j int) bool {
-		if criteria == SortCategoryTotalTime {
+		switch sortBy {
+		case SortCategoryTotalTime:
 			return biggestDecreases[i].TotalTimeDifferencePercent < biggestDecreases[j].TotalTimeDifferencePercent
-		} else if criteria == SortCategoryAverageTime {
+		case SortCategoryAverageTime:
 			return biggestDecreases[i].AverageDifferencePercent < biggestDecreases[j].AverageDifferencePercent
-		} else if criteria == SortCategoryCount {
+		case SortCategoryCount:
 			return biggestDecreases[i].CountDifferencePercent < biggestDecreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")

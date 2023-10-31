@@ -1,6 +1,6 @@
 package app
 
-func (a *App) RunQueryWithMockData(query, firstOffset, secondOffset, length string, scaleBy, fname string) (map[string]*DBEntry, error) {
+func (a *App) RunQueryWithMockData(fname string) (map[string]*DBEntry, error) {
 	g, err := getGrafanaResponseFromJSON(fname)
 	if err != nil {
 		return nil, err
