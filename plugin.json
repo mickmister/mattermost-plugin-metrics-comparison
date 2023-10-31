@@ -1,7 +1,7 @@
 {
-    "id": "com.mattermost.plugin-starter-template",
-    "name": "Plugin Starter Template",
-    "description": "This plugin serves as a starting point for writing a Mattermost plugin.",
+    "id": "performance-comparison",
+    "name": "Performance Comparison",
+    "description": "Run Prometheus performance reports to compare different versions of Mattermost.",
     "homepage_url": "https://github.com/mattermost/mattermost-plugin-starter-template",
     "support_url": "https://github.com/mattermost/mattermost-plugin-starter-template/issues",
     "release_notes_url": "https://github.com/mattermost/mattermost-plugin-starter-template/releases/tag/v0.1.0",
@@ -17,12 +17,18 @@
             "windows-amd64": "server/dist/plugin-windows-amd64.exe"
         }
     },
-    "webapp": {
-        "bundle_path": "webapp/dist/main.js"
-    },
     "settings_schema": {
         "header": "",
         "footer": "",
-        "settings": []
+        "settings": [
+            {
+                "key": "PrometheusURL",
+                "display_name": "Prometheus URL",
+                "type": "text",
+                "help_text": "",
+                "placeholder": "",
+                "default": "http://localhost:9090"
+            }
+        ]
     }
 }
