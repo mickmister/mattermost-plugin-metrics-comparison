@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mattermost/mattermost-plugin-metrics-comparison/server/prometheus"
+	"github.com/pkg/errors"
 )
 
 type DBEntry struct {
@@ -17,6 +18,15 @@ type DBEntry struct {
 	Average   float64
 }
 
+type FullDBEntry struct {
+	Method                     string
+	Timeframe1                 *DBEntry
+	Timeframe2                 *DBEntry
+	TotalTimeDifferencePercent float64
+	CountDifferencePercent     float64
+	AverageDifferencePercent   float64
+}
+
 type APIEntry struct {
 	Handler   string
 	TotalTime float64
@@ -24,13 +34,28 @@ type APIEntry struct {
 	Average   float64
 }
 
+type FullAPIEntry struct {
+	Handler                    string
+	Timeframe1                 *APIEntry
+	Timeframe2                 *APIEntry
+	TotalTimeDifferencePercent float64
+	CountDifferencePercent     float64
+	AverageDifferencePercent   float64
+}
+
 type App struct {
 	client prometheus.PrometheusClient
 }
 
 type DBStoreReport struct {
-	BiggestIncreases []*DBEntry
-	BiggestDecreases []*DBEntry
+	BiggestIncreases []*FullDBEntry
+	BiggestDecreases []*FullDBEntry
+	RunFlags         RunReportFlags
+}
+
+type APIHandlerReport struct {
+	BiggestIncreases []*FullAPIEntry
+	BiggestDecreases []*FullAPIEntry
 	RunFlags         RunReportFlags
 }
 
@@ -206,8 +231,18 @@ func replacePlaceholders(query, offset, length string) string {
 	return query
 }
 
-func ComputeReport(data1, data2 map[string]*DBEntry, runFlags RunReportFlags) *DBStoreReport {
-	data := map[string]*DBEntry{}
+func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, error) {
+	data1, err := a.GetDBMetrics(runFlags.First, runFlags.Length)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting DB metrics for first time frame")
+	}
+
+	data2, err := a.GetDBMetrics(runFlags.Second, runFlags.Length)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting DB metrics for second time frame")
+	}
+
+	data := map[string]*FullDBEntry{}
 	criteria := runFlags.Sort
 	limit := runFlags.Limit
 
@@ -218,56 +253,48 @@ func ComputeReport(data1, data2 map[string]*DBEntry, runFlags RunReportFlags) *D
 			continue
 		}
 
-		total := (value2.TotalTime - value1.TotalTime) / value1.TotalTime
-		total = math.Ceil(total*10000) / 100
-
-		data[method] = &DBEntry{
-			Method:    method,
-			TotalTime: total,
-			Count:     (value2.Count - value1.Count) / value1.Count,
-			Average:   (value2.Average - value1.Average) / value2.Average,
+		data[method] = &FullDBEntry{
+			Method:                     method,
+			Timeframe1:                 value1,
+			Timeframe2:                 value2,
+			TotalTimeDifferencePercent: numToPercent((value2.TotalTime - value1.TotalTime) / value1.TotalTime),
+			CountDifferencePercent:     numToPercent((value2.Count - value1.Count) / value1.Count),
+			AverageDifferencePercent:   numToPercent((value2.Average - value1.Average) / value2.Average),
 		}
 	}
-
-	// if criteria != "total-time" && criteria != "average-time" && criteria != "count" {
-	// 	fmt.Println("Invalid criteria")
-	// 	return
-	// }
 
 	if criteria == "" {
 		criteria = "total-time"
 	}
 
-	biggestIncreases := make([]*DBEntry, 0, len(data))
+	biggestIncreases := make([]*FullDBEntry, 0, len(data))
 	for _, d := range data {
 		biggestIncreases = append(biggestIncreases, d)
 	}
 
 	sort.Slice(biggestIncreases, func(i, j int) bool {
-		// return dataList[i].TotalTime < dataList[j].TotalTime
 		if criteria == "total-time" {
-			return biggestIncreases[i].TotalTime > biggestIncreases[j].TotalTime
+			return biggestIncreases[i].TotalTimeDifferencePercent > biggestIncreases[j].TotalTimeDifferencePercent
 		} else if criteria == "average-time" {
-			return biggestIncreases[i].Average > biggestIncreases[j].Average
+			return biggestIncreases[i].AverageDifferencePercent > biggestIncreases[j].AverageDifferencePercent
 		} else if criteria == "count" {
-			return biggestIncreases[i].Count > biggestIncreases[j].Count
+			return biggestIncreases[i].CountDifferencePercent > biggestIncreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
 	})
 
-	biggestDecreases := make([]*DBEntry, 0, len(data))
+	biggestDecreases := make([]*FullDBEntry, 0, len(data))
 	for _, d := range data {
 		biggestDecreases = append(biggestDecreases, d)
 	}
 
 	sort.Slice(biggestDecreases, func(i, j int) bool {
-		// return dataList[i].TotalTime < dataList[j].TotalTime
 		if criteria == "total-time" {
-			return biggestDecreases[i].TotalTime < biggestDecreases[j].TotalTime
+			return biggestDecreases[i].TotalTimeDifferencePercent < biggestDecreases[j].TotalTimeDifferencePercent
 		} else if criteria == "average-time" {
-			return biggestDecreases[i].Average < biggestDecreases[j].Average
+			return biggestDecreases[i].AverageDifferencePercent < biggestDecreases[j].AverageDifferencePercent
 		} else if criteria == "count" {
-			return biggestDecreases[i].Count < biggestDecreases[j].Count
+			return biggestDecreases[i].CountDifferencePercent < biggestDecreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
 	})
@@ -280,5 +307,88 @@ func ComputeReport(data1, data2 map[string]*DBEntry, runFlags RunReportFlags) *D
 		BiggestIncreases: biggestIncreases[:limit],
 		BiggestDecreases: biggestDecreases[:limit],
 		RunFlags:         runFlags,
+	}, nil
+}
+
+func (a *App) RunAPIComparisonReport(runFlags RunReportFlags) (*APIHandlerReport, error) {
+	data1, err := a.GetAPIMetrics(runFlags.First, runFlags.Length)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting DB metrics for first time frame")
 	}
+
+	data2, err := a.GetAPIMetrics(runFlags.Second, runFlags.Length)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting DB metrics for second time frame")
+	}
+
+	data := map[string]*FullAPIEntry{}
+	criteria := runFlags.Sort
+	limit := runFlags.Limit
+
+	for method, value1 := range data1 {
+		value2, ok := data2[method]
+		if !ok {
+			// fmt.Println("missing value for method " + method)
+			continue
+		}
+
+		data[method] = &FullAPIEntry{
+			Handler:                    method,
+			Timeframe1:                 value1,
+			Timeframe2:                 value2,
+			TotalTimeDifferencePercent: numToPercent((value2.TotalTime - value1.TotalTime) / value1.TotalTime),
+			CountDifferencePercent:     numToPercent((value2.Count - value1.Count) / value1.Count),
+			AverageDifferencePercent:   numToPercent((value2.Average - value1.Average) / value2.Average),
+		}
+	}
+
+	if criteria == "" {
+		criteria = "total-time"
+	}
+
+	biggestIncreases := make([]*FullAPIEntry, 0, len(data))
+	for _, d := range data {
+		biggestIncreases = append(biggestIncreases, d)
+	}
+
+	sort.Slice(biggestIncreases, func(i, j int) bool {
+		if criteria == "total-time" {
+			return biggestIncreases[i].TotalTimeDifferencePercent > biggestIncreases[j].TotalTimeDifferencePercent
+		} else if criteria == "average-time" {
+			return biggestIncreases[i].AverageDifferencePercent > biggestIncreases[j].AverageDifferencePercent
+		} else if criteria == "count" {
+			return biggestIncreases[i].CountDifferencePercent > biggestIncreases[j].CountDifferencePercent
+		}
+		panic("unreachable code")
+	})
+
+	biggestDecreases := make([]*FullAPIEntry, 0, len(data))
+	for _, d := range data {
+		biggestDecreases = append(biggestDecreases, d)
+	}
+
+	sort.Slice(biggestDecreases, func(i, j int) bool {
+		if criteria == "total-time" {
+			return biggestDecreases[i].TotalTimeDifferencePercent < biggestDecreases[j].TotalTimeDifferencePercent
+		} else if criteria == "average-time" {
+			return biggestDecreases[i].AverageDifferencePercent < biggestDecreases[j].AverageDifferencePercent
+		} else if criteria == "count" {
+			return biggestDecreases[i].CountDifferencePercent < biggestDecreases[j].CountDifferencePercent
+		}
+		panic("unreachable code")
+	})
+
+	if limit > len(biggestDecreases) {
+		limit = len(biggestDecreases)
+	}
+
+	return &APIHandlerReport{
+		BiggestIncreases: biggestIncreases[:limit],
+		BiggestDecreases: biggestDecreases[:limit],
+		RunFlags:         runFlags,
+	}, nil
+}
+
+func numToPercent(num float64) float64 {
+	return math.Ceil(num*10000) / 100
 }

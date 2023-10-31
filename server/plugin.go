@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 	"sync"
 
@@ -78,14 +77,16 @@ func getRunCommand() *model.AutocompleteData {
 	runCommand.AddNamedTextArgument("scaleBy", "", "", defaults.ScaleBy, false)
 	runCommand.AddNamedTextArgument("sort", "", "", defaults.Sort, false)
 	runCommand.AddNamedTextArgument("limit", "", "", fmt.Sprintf("%d", defaults.Limit), false)
+	runCommand.AddNamedTextArgument("public", "", "", "false", false)
 
 	return runCommand
 }
 
-func parseRunCommandFlags(args []string) (app.RunReportFlags, error) {
+func parseRunCommandFlags(args []string) (app.RunReportFlags, bool, error) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 
 	defaults := app.GetDefaultReportFlags()
+	reportType := fs.String("report", string(defaults.ReportType), "")
 	query := fs.String("query", defaults.Query, "")
 	first := fs.String("first", defaults.First, "")
 	second := fs.String("second", defaults.Second, "")
@@ -93,102 +94,107 @@ func parseRunCommandFlags(args []string) (app.RunReportFlags, error) {
 	scaleBy := fs.String("scaleBy", defaults.ScaleBy, "")
 	sort := fs.String("sort", defaults.Sort, "")
 	limit := fs.Int("limit", defaults.Limit, "")
+	public := fs.String("public", "false", "")
 
 	err := fs.Parse(args)
 	if err != nil {
-		return defaults, err
+		return defaults, false, err
 	}
 
+	isPublicPost := *public == "true"
+
 	return app.RunReportFlags{
-		Query:   *query,
-		First:   *first,
-		Second:  *second,
-		Length:  *length,
-		ScaleBy: *scaleBy,
-		Sort:    *sort,
-		Limit:   *limit,
-	}, nil
+		ReportType: app.ReportType(*reportType),
+		Query:      *query,
+		First:      *first,
+		Second:     *second,
+		Length:     *length,
+		ScaleBy:    *scaleBy,
+		Sort:       *sort,
+		Limit:      *limit,
+	}, isPublicPost, nil
 }
 
 func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 	parts := strings.Fields(args.Command)
 	if len(parts) < 1 {
-		return &model.CommandResponse{Text: "Please provide a command." + getHelpText()}, nil
+		return p.ephemeralResponse("Please provide a command." + getHelpText()), nil
 	}
 	if parts[0] != "/"+trigger {
-		return &model.CommandResponse{Text: "Invalid command. Please use " + trigger + getHelpText()}, nil
+		return p.ephemeralResponse("Invalid command. Please use " + trigger + getHelpText()), nil
 	}
 
 	if len(parts) < 2 {
-		return &model.CommandResponse{Text: "Invalid command. Please include a subcommand." + getHelpText()}, nil
+		return p.ephemeralResponse("Invalid command. Please include a subcommand." + getHelpText()), nil
 	}
 
 	subcommand := parts[1]
 	if subcommand != "run" {
-		return &model.CommandResponse{Text: "Invalid subcommand" + subcommand + "." + getHelpText()}, nil
+		return p.ephemeralResponse("Invalid subcommand" + subcommand + "." + getHelpText()), nil
 	}
 
 	commandFlags := parts[2:]
 
-	flagValues, err := parseRunCommandFlags(commandFlags)
+	flagValues, isPublic, err := parseRunCommandFlags(commandFlags)
 	if err != nil {
-		return &model.CommandResponse{Text: errors.Wrap(err, "error parsing command flags").Error()}, nil
+		return p.ephemeralResponse(errors.Wrap(err, "error parsing command flags").Error()), nil
 	}
 
-	resText, err := p.executeRunCommand(flagValues)
+	reportText, err := p.executeRunCommand(flagValues)
 	if err != nil {
-		p.API.LogError("failed to execute run command", "err", err)
+		errMsg := errors.Wrap(err, "failed to execute run command").Error()
+		p.API.LogError(errMsg)
+		return p.ephemeralResponse(errMsg), nil
 	}
 
-	return &model.CommandResponse{Text: resText}, nil
+	resText := "`" + args.Command + "`\n\n" + reportText
+
+	if isPublic {
+		return p.publicResponse(args.ChannelId, args.UserId, resText), nil
+	}
+
+	return p.ephemeralResponse(resText), nil
+}
+
+func (p *Plugin) publicResponse(channelId, userId, text string) *model.CommandResponse {
+	post := &model.Post{
+		ChannelId: channelId,
+		UserId:    userId,
+		Message:   text,
+	}
+	p.pluginapi.Post.CreatePost(post)
+	return &model.CommandResponse{}
+}
+
+func (p *Plugin) ephemeralResponse(text string) *model.CommandResponse {
+	return &model.CommandResponse{Text: text}
 }
 
 func (p *Plugin) executeRunCommand(flagValues app.RunReportFlags) (string, error) {
 	a := app.New(p.prometheusClient)
 
-	data1, err := a.GetDBMetrics(flagValues.First, flagValues.Length)
-	if err != nil {
-		err = errors.Wrap(err, "error getting API metrics")
-		return err.Error(), err
+	if flagValues.ReportType == app.ReportTypeDBStoreMethodComparison {
+		report, err := a.RunDBComparisonReport(flagValues)
+		if err != nil {
+			err = errors.Wrap(err, "error running db comparison report")
+			return err.Error(), err
+		}
+
+		return report.AsMarkdown(), nil
 	}
 
-	data2, err := a.GetDBMetrics(flagValues.Second, flagValues.Length)
-	if err != nil {
-		err = errors.Wrap(err, "error running report")
-		return err.Error(), err
+	if flagValues.ReportType == app.ReportTypeAPIHandlerComparison {
+		report, err := a.RunAPIComparisonReport(flagValues)
+		if err != nil {
+			err = errors.Wrap(err, "error running db comparison report")
+			return err.Error(), err
+		}
+
+		return report.AsMarkdown(), nil
 	}
 
-	report := app.ComputeReport(data1, data2, flagValues)
-	return report.AsMarkdown(), nil
-}
-
-func (p *Plugin) executeRunCommandWithMockData(flagValues app.RunReportFlags) (string, error) {
-	a := app.New(p.prometheusClient)
-
-	bundlePath, err := p.API.GetBundlePath()
-	if err != nil {
-		err = errors.Wrap(err, "error getting bundle assets folder path for test data")
-		return err.Error(), err
-	}
-
-	fname := path.Join(bundlePath, "assets", fname1)
-
-	data1, err := a.RunQueryWithMockData(flagValues.Query, flagValues.First, flagValues.Second, flagValues.Length, flagValues.ScaleBy, fname)
-	if err != nil {
-		err = errors.Wrap(err, "error running report")
-		return err.Error(), err
-	}
-
-	fname = path.Join(bundlePath, "assets", fname2)
-
-	data2, err := a.RunQueryWithMockData(flagValues.Query, flagValues.First, flagValues.Second, flagValues.Length, flagValues.ScaleBy, fname)
-	if err != nil {
-		err = errors.Wrap(err, "error running report")
-		return err.Error(), err
-	}
-
-	report := app.ComputeReport(data1, data2, flagValues)
-	return report.AsMarkdown(), nil
+	err := errors.Errorf("unknown run subcommand %s", flagValues.ReportType)
+	return err.Error(), err
 }
 
 func getHelpText() string {

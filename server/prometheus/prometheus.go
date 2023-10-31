@@ -51,7 +51,7 @@ func New(endpoint string, logger pluginapi.LogService) *Client {
 func (c *Client) Query(query string) (*Response, error) {
 	var response Response
 
-	c.logger.Debug("MICHAEL LOGS: Running PromQL query: " + query)
+	ptof("Running PromQL query: " + query)
 
 	resp, err := http.Get(fmt.Sprintf("%s/api/v1/query?query=%s", c.endpoint, url.QueryEscape(query)))
 	if err != nil {
@@ -68,6 +68,13 @@ func (c *Client) Query(query string) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(response.Data.Result) == 0 {
+		return nil, errors.Errorf("received no data from prometheus query `%s`", query)
+	}
+
+	ptofj(&response)
+
 	return &response, nil
 }
 
