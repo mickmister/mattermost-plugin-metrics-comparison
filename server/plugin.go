@@ -27,7 +27,7 @@ type Plugin struct {
 	// setConfiguration for usage.
 	configuration *configuration
 
-	prometheusClient prometheus.PrometheusClient
+	reportQueryClient *prometheus.ReportQueryClient
 
 	pluginapi *pluginapi.Client
 }
@@ -58,7 +58,9 @@ func (p *Plugin) OnActivate() error {
 	}
 
 	p.pluginapi = pluginapi.NewClient(p.API, p.Driver)
-	p.prometheusClient = prometheus.New(conf.PrometheusURL, p.pluginapi.Log)
+
+	promClient := prometheus.NewPrometheusClient(conf.PrometheusURL)
+	p.reportQueryClient = prometheus.NewReportClient(promClient)
 
 	return nil
 }
@@ -189,7 +191,7 @@ func (p *Plugin) ephemeralResponse(text string) *model.CommandResponse {
 }
 
 func (p *Plugin) executeRunCommand(flagValues app.RunReportFlags) (string, error) {
-	a := app.New(p.prometheusClient)
+	a := app.New(p.reportQueryClient)
 
 	if flagValues.ReportType == app.ReportTypeDBStoreMethodComparison {
 		report, err := a.RunDBComparisonReport(flagValues)

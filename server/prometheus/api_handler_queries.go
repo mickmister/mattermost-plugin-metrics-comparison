@@ -6,36 +6,36 @@ package prometheus
 
 const queryTemplateAPIHandlerTotalTime = "sum(increase(mattermost_api_time_sum[{{.Length}}] {{.Offset}}) and increase(mattermost_api_time_count[{{.Length}}] {{.Offset}}) > 0) by (handler)"
 
-func (c *Client) QueryAPIHandlerTotalTime(offset, length string) (*Response, error) {
+func (c *ReportQueryClient) QueryAPIHandlerTotalTime(offset, length string) (*Response, error) {
 	if offset != "" {
 		offset = "offset " + offset
 	}
 
 	query := replacePlaceholders(queryTemplateAPIHandlerTotalTime, offset, length)
 
-	return c.Query(query)
+	return c.client.Query(query)
 }
 
 const queryTemplateAPIHandlerCount = "sum(increase(mattermost_api_time_count[{{.Length}}] {{.Offset}}) > 0) by (handler)"
 
-func (c *Client) QueryAPIHandlerCount(offset, length string) (*Response, error) {
+func (c *ReportQueryClient) QueryAPIHandlerCount(offset, length string) (*Response, error) {
 	if offset != "" {
 		offset = "offset " + offset
 	}
 
 	query := replacePlaceholders(queryTemplateAPIHandlerCount, offset, length)
 
-	return c.Query(query)
+	return c.client.Query(query)
 }
 
 const queryTemplateAPIHandlerAverage = "(sum(increase(mattermost_api_time_sum[{{.Length}}] {{.Offset}})) by (handler) / sum(increase(mattermost_api_time_count[{{.Length}}] {{.Offset}}) > 0) by (handler))"
 
-func (c *Client) QueryAPIHandlerAverage(offset, length string) (*Response, error) {
+func (c *ReportQueryClient) QueryAPIHandlerAverage(offset, length string) (*Response, error) {
 	if offset != "" {
 		offset = "offset " + offset
 	}
 
 	query := replacePlaceholders(queryTemplateAPIHandlerAverage, offset, length)
 
-	return c.Query(query)
+	return c.client.Query(query)
 }

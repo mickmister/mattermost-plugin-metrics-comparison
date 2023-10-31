@@ -44,7 +44,7 @@ type FullAPIEntry struct {
 }
 
 type App struct {
-	client prometheus.PrometheusClient
+	reportQueryClient *prometheus.ReportQueryClient
 }
 
 type DBStoreReport struct {
@@ -59,15 +59,15 @@ type APIHandlerReport struct {
 	RunFlags         RunReportFlags
 }
 
-func New(client prometheus.PrometheusClient) *App {
+func New(client *prometheus.ReportQueryClient) *App {
 	return &App{
-		client: client,
+		reportQueryClient: client,
 	}
 }
 
 func (a *App) GetDBMetrics(offset, length string) (map[string]*DBEntry, error) {
 	data := map[string]*DBEntry{}
-	totalTimeMetrics, err := a.client.QueryDBStoreTotalTime(offset, length)
+	totalTimeMetrics, err := a.reportQueryClient.QueryDBStoreTotalTime(offset, length)
 	// totalTimeMetrics, err := a.client.Query(fmt.Sprintf("sum(increase(mattermost_db_store_time_sum[%s]) and increase(mattermost_db_store_time_count[%s]) > 0) by (method)", timeRange, timeRange))
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (a *App) GetDBMetrics(offset, length string) (map[string]*DBEntry, error) {
 		data[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
 	}
 
-	callsMetrics, err := a.client.QueryDBStoreCount(offset, length)
+	callsMetrics, err := a.reportQueryClient.QueryDBStoreCount(offset, length)
 	// callsMetrics, err := a.client.Query(fmt.Sprintf("sum(increase(mattermost_db_store_time_count[%s]) > 0) by (method)", timeRange))
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func (a *App) GetDBMetrics(offset, length string) (map[string]*DBEntry, error) {
 		}
 		entry.Count = count
 	}
-	averageMetrics, err := a.client.QueryDBStoreAverage(offset, length)
+	averageMetrics, err := a.reportQueryClient.QueryDBStoreAverage(offset, length)
 	// averageMetrics, err := a.client.Query(fmt.Sprintf("(sum(increase(mattermost_db_store_time_count[2h]) > 0) by (method) - sum(increase(mattermost_db_store_time_count[2h] offset 30m) > 0) by (method)) / sum(increase(mattermost_db_store_time_count[2h] offset 30m) > 0) by (method) * 100"))
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (a *App) GetDBMetrics(offset, length string) (map[string]*DBEntry, error) {
 
 func (a *App) GetAPIMetrics(offset, length string) (map[string]*APIEntry, error) {
 	data := map[string]*APIEntry{}
-	totalTimeMetrics, err := a.client.QueryAPIHandlerTotalTime(offset, length)
+	totalTimeMetrics, err := a.reportQueryClient.QueryAPIHandlerTotalTime(offset, length)
 	// totalTimeMetrics, err := a.client.Query(fmt.Sprintf("sum(increase(mattermost_api_time_sum[%s]) and increase(mattermost_api_time_count[%s]) > 0) by (handler)", timeRange, timeRange))
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func (a *App) GetAPIMetrics(offset, length string) (map[string]*APIEntry, error)
 		data[r.Metric["handler"]] = &APIEntry{TotalTime: calls, Handler: r.Metric["handler"]}
 	}
 
-	callsMetrics, err := a.client.QueryAPIHandlerCount(offset, length)
+	callsMetrics, err := a.reportQueryClient.QueryAPIHandlerCount(offset, length)
 	// callsMetrics, err := a.client.Query(fmt.Sprintf("sum(increase(mattermost_api_time_count[%s]) > 0) by (handler)", timeRange))
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func (a *App) GetAPIMetrics(offset, length string) (map[string]*APIEntry, error)
 		}
 		entry.Count = count
 	}
-	averageMetrics, err := a.client.QueryAPIHandlerAverage(offset, length)
+	averageMetrics, err := a.reportQueryClient.QueryAPIHandlerAverage(offset, length)
 	// averageMetrics, err := a.client.Query(fmt.Sprintf("(sum(increase(mattermost_api_time_sum[%s])) by (handler) / sum(increase(mattermost_api_time_count[%s]) > 0) by (handler))", timeRange, timeRange))
 	if err != nil {
 		return nil, err
@@ -158,71 +158,71 @@ func (a *App) GetAPIMetrics(offset, length string) (map[string]*APIEntry, error)
 
 // sum(increase(mattermost_api_time_sum[%s]) and increase(mattermost_api_time_count[%s]) > 0) by (handler)
 
-func (a *App) RunQuery(query, firstOffset, secondOffset, length string, scaleBy string) (map[string]*DBEntry, error) {
-	firstResultsMap := map[string]*DBEntry{}
-	secondResultsMap := map[string]*DBEntry{}
+// func (a *App) RunQuery(query, firstOffset, secondOffset, length string, scaleBy string) (map[string]*DBEntry, error) {
+// 	firstResultsMap := map[string]*DBEntry{}
+// 	secondResultsMap := map[string]*DBEntry{}
 
-	// firstQuery := replacePlaceholders(query, firstOffset, length)
-	secondQuery := replacePlaceholders(query, secondOffset, length)
+// 	// firstQuery := replacePlaceholders(query, firstOffset, length)
+// 	secondQuery := replacePlaceholders(query, secondOffset, length)
 
-	timeRange := length
-	queryResult, err := a.client.Query(fmt.Sprintf("sum(increase(mattermost_db_store_time_count[%s]) > 0) by (method)", timeRange))
-	//
-	// fmt.Println(firstQuery)
-	if err != nil {
-		return nil, err
-	}
+// 	timeRange := length
+// 	queryResult, err := a.reportQueryClient.Query(fmt.Sprintf("sum(increase(mattermost_db_store_time_count[%s]) > 0) by (method)", timeRange))
+// 	//
+// 	// fmt.Println(firstQuery)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	// fmt.Printf("%+v\n", queryResult.Data.Result)
+// 	// fmt.Printf("%+v\n", queryResult.Data.Result)
 
-	for _, r := range queryResult.Data.Result {
-		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
-		}
-		firstResultsMap[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
-	}
+// 	for _, r := range queryResult.Data.Result {
+// 		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		firstResultsMap[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
+// 	}
 
-	queryResult, err = a.client.Query(secondQuery)
-	if err != nil {
-		return nil, err
-	}
+// 	queryResult, err = a.reportQueryClient.Query(secondQuery)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	for _, r := range queryResult.Data.Result {
-		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
-		if err != nil {
-			return nil, err
-		}
-		secondResultsMap[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
-	}
+// 	for _, r := range queryResult.Data.Result {
+// 		calls, err := strconv.ParseFloat(r.Value[1].(string), 64)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		secondResultsMap[r.Metric["method"]] = &DBEntry{TotalTime: calls, Method: r.Metric["method"]}
+// 	}
 
-	finalResult := map[string]*DBEntry{}
-	for handlerName, v1 := range firstResultsMap {
-		v2 := secondResultsMap[handlerName]
-		if v2 == nil {
-			continue
-		}
+// 	finalResult := map[string]*DBEntry{}
+// 	for handlerName, v1 := range firstResultsMap {
+// 		v2 := secondResultsMap[handlerName]
+// 		if v2 == nil {
+// 			continue
+// 		}
 
-		if v1.TotalTime == 0 || v2.TotalTime == 0 {
-			finalResult[handlerName] = &DBEntry{
-				Method:    handlerName,
-				TotalTime: 0,
-			}
-			continue
-		}
+// 		if v1.TotalTime == 0 || v2.TotalTime == 0 {
+// 			finalResult[handlerName] = &DBEntry{
+// 				Method:    handlerName,
+// 				TotalTime: 0,
+// 			}
+// 			continue
+// 		}
 
-		diff := v1.TotalTime - v2.TotalTime
-		// percentDiff := diff
-		percentDiff := (diff / v2.TotalTime) * 100
+// 		diff := v1.TotalTime - v2.TotalTime
+// 		// percentDiff := diff
+// 		percentDiff := (diff / v2.TotalTime) * 100
 
-		finalResult[handlerName] = &DBEntry{
-			Method:    handlerName,
-			TotalTime: percentDiff,
-		}
-	}
+// 		finalResult[handlerName] = &DBEntry{
+// 			Method:    handlerName,
+// 			TotalTime: percentDiff,
+// 		}
+// 	}
 
-	return finalResult, nil
-}
+// 	return finalResult, nil
+// }
 
 func replacePlaceholders(query, offset, length string) string {
 	// Replace placeholders in the query with actual values.

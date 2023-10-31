@@ -8,22 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mattermost/mattermost/server/public/pluginapi"
-
 	"github.com/pkg/errors"
 )
-
-type PrometheusClient interface {
-	Query(query string) (*Response, error)
-
-	QueryAPIHandlerTotalTime(offset, length string) (*Response, error)
-	QueryAPIHandlerCount(offset, length string) (*Response, error)
-	QueryAPIHandlerAverage(offset, length string) (*Response, error)
-
-	QueryDBStoreTotalTime(offset, length string) (*Response, error)
-	QueryDBStoreCount(offset, length string) (*Response, error)
-	QueryDBStoreAverage(offset, length string) (*Response, error)
-}
 
 type Response struct {
 	Status string
@@ -36,19 +22,31 @@ type Response struct {
 	}
 }
 
-type Client struct {
-	endpoint string
-	logger   pluginapi.LogService
+type PrometheusClient interface {
+	Query(query string) (*Response, error)
 }
 
-func New(endpoint string, logger pluginapi.LogService) *Client {
-	return &Client{
-		endpoint: endpoint,
-		logger:   logger,
+type ReportQueryClient struct {
+	client PrometheusClient
+}
+
+func NewReportClient(client PrometheusClient) *ReportQueryClient {
+	return &ReportQueryClient{
+		client,
 	}
 }
 
-func (c *Client) Query(query string) (*Response, error) {
+type prometheusClient struct {
+	endpoint string
+}
+
+func NewPrometheusClient(endpoint string) PrometheusClient {
+	return &prometheusClient{
+		endpoint,
+	}
+}
+
+func (c *prometheusClient) Query(query string) (*Response, error) {
 	var response Response
 
 	// ptof("Running PromQL query: " + query)

@@ -8,32 +8,32 @@ const queryTemplateDBStoreTotalTime = "sum(increase(mattermost_db_store_time_sum
 const queryTemplateDBStoreCount = "sum(increase(mattermost_db_store_time_count[{{.Length}}] {{.Offset}}) > 0) by (method)"
 const queryTemplateDBStoreAverage = "(sum(increase(mattermost_db_store_time_sum[{{.Length}}] {{.Offset}})) by (method) / sum(increase(mattermost_db_store_time_count[{{.Length}}] {{.Offset}}) > 0) by (method))"
 
-func (c *Client) QueryDBStoreTotalTime(offset, length string) (*Response, error) {
+func (c *ReportQueryClient) QueryDBStoreTotalTime(offset, length string) (*Response, error) {
 	if offset != "" {
 		offset = "offset " + offset
 	}
 
 	query := replacePlaceholders(queryTemplateDBStoreTotalTime, offset, length)
 
-	return c.Query(query)
+	return c.client.Query(query)
 }
 
-func (c *Client) QueryDBStoreCount(offset, length string) (*Response, error) {
+func (c *ReportQueryClient) QueryDBStoreCount(offset, length string) (*Response, error) {
 	if offset != "" {
 		offset = "offset " + offset
 	}
 
 	query := replacePlaceholders(queryTemplateDBStoreCount, offset, length)
 
-	return c.Query(query)
+	return c.client.Query(query)
 }
 
-func (c *Client) QueryDBStoreAverage(offset, length string) (*Response, error) {
+func (c *ReportQueryClient) QueryDBStoreAverage(offset, length string) (*Response, error) {
 	if offset != "" {
 		offset = "offset " + offset
 	}
 
 	query := replacePlaceholders(queryTemplateDBStoreAverage, offset, length)
 
-	return c.Query(query)
+	return c.client.Query(query)
 }
