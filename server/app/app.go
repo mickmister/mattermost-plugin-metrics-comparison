@@ -243,7 +243,7 @@ func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, er
 	}
 
 	data := map[string]*FullDBEntry{}
-	criteria := runFlags.Sort
+	sortBy := runFlags.Sort
 	limit := runFlags.Limit
 
 	for method, value1 := range data1 {
@@ -263,8 +263,8 @@ func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, er
 		}
 	}
 
-	if criteria == "" {
-		criteria = "total-time"
+	if sortBy == "" {
+		sortBy = SortCategoryTotalTime
 	}
 
 	biggestIncreases := make([]*FullDBEntry, 0, len(data))
@@ -273,11 +273,11 @@ func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, er
 	}
 
 	sort.Slice(biggestIncreases, func(i, j int) bool {
-		if criteria == "total-time" {
+		if sortBy == SortCategoryTotalTime {
 			return biggestIncreases[i].TotalTimeDifferencePercent > biggestIncreases[j].TotalTimeDifferencePercent
-		} else if criteria == "average-time" {
+		} else if sortBy == SortCategoryAverageTime {
 			return biggestIncreases[i].AverageDifferencePercent > biggestIncreases[j].AverageDifferencePercent
-		} else if criteria == "count" {
+		} else if sortBy == SortCategoryCount {
 			return biggestIncreases[i].CountDifferencePercent > biggestIncreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
@@ -289,11 +289,11 @@ func (a *App) RunDBComparisonReport(runFlags RunReportFlags) (*DBStoreReport, er
 	}
 
 	sort.Slice(biggestDecreases, func(i, j int) bool {
-		if criteria == "total-time" {
+		if sortBy == SortCategoryTotalTime {
 			return biggestDecreases[i].TotalTimeDifferencePercent < biggestDecreases[j].TotalTimeDifferencePercent
-		} else if criteria == "average-time" {
+		} else if sortBy == SortCategoryAverageTime {
 			return biggestDecreases[i].AverageDifferencePercent < biggestDecreases[j].AverageDifferencePercent
-		} else if criteria == "count" {
+		} else if sortBy == SortCategoryCount {
 			return biggestDecreases[i].CountDifferencePercent < biggestDecreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
@@ -343,7 +343,7 @@ func (a *App) RunAPIComparisonReport(runFlags RunReportFlags) (*APIHandlerReport
 	}
 
 	if criteria == "" {
-		criteria = "total-time"
+		criteria = SortCategoryTotalTime
 	}
 
 	biggestIncreases := make([]*FullAPIEntry, 0, len(data))
@@ -352,11 +352,11 @@ func (a *App) RunAPIComparisonReport(runFlags RunReportFlags) (*APIHandlerReport
 	}
 
 	sort.Slice(biggestIncreases, func(i, j int) bool {
-		if criteria == "total-time" {
+		if criteria == SortCategoryTotalTime {
 			return biggestIncreases[i].TotalTimeDifferencePercent > biggestIncreases[j].TotalTimeDifferencePercent
-		} else if criteria == "average-time" {
+		} else if criteria == SortCategoryAverageTime {
 			return biggestIncreases[i].AverageDifferencePercent > biggestIncreases[j].AverageDifferencePercent
-		} else if criteria == "count" {
+		} else if criteria == SortCategoryCount {
 			return biggestIncreases[i].CountDifferencePercent > biggestIncreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
@@ -368,11 +368,11 @@ func (a *App) RunAPIComparisonReport(runFlags RunReportFlags) (*APIHandlerReport
 	}
 
 	sort.Slice(biggestDecreases, func(i, j int) bool {
-		if criteria == "total-time" {
+		if criteria == SortCategoryTotalTime {
 			return biggestDecreases[i].TotalTimeDifferencePercent < biggestDecreases[j].TotalTimeDifferencePercent
-		} else if criteria == "average-time" {
+		} else if criteria == SortCategoryAverageTime {
 			return biggestDecreases[i].AverageDifferencePercent < biggestDecreases[j].AverageDifferencePercent
-		} else if criteria == "count" {
+		} else if criteria == SortCategoryCount {
 			return biggestDecreases[i].CountDifferencePercent < biggestDecreases[j].CountDifferencePercent
 		}
 		panic("unreachable code")
